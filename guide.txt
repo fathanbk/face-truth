@@ -1,0 +1,7 @@
+Cara Penggunaan
+1. Ketik pada terminal cd facetruth
+2. Ketik pada terminal py -3 -m venv venv (untuk membuat virtual environment) pada windows
+3. Ketik pada terminal source venv/bin/activate (untuk mengaktifkan virtual environment) pada linux
+4. Ketik pada terminal pip install -r requirements.txt (untuk menginstall library yang dibutuhkan)
+5. Ketik pada terminal pip install -r dlib-19.8.1-cp36-cp36m-win_amd64.whl (untuk menginstall library dlib)
+6. Ketik pada terminal python . (untuk menjalankan program)
