@@ -5,9 +5,6 @@ setup(
     version='0.1',
     packages=find_packages(),
     install_requires=[
-        'flask',
-        'pymongo',
-        'flask_cors',
         'fer==22.4.0',
         'ffpyplayer==4.3.5',
         'matplotlib==3.5.1',
@@ -17,5 +14,6 @@ setup(
         'opencv_contrib_python==4.5.5.64',
         'scipy==1.8.0',
         'tensorflow==2.10.0',
+        'fpdf==1.7.2'
     ],
 )

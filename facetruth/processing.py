@@ -1,5 +1,5 @@
 import argparse
-
+import os
 import cv2
 import mediapipe as mp
 from ffpyplayer.player import MediaPlayer
@@ -16,6 +16,10 @@ from fer import FER
 import threading
 import time
 import sys
+from fpdf import FPDF
+
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
 MAX_FRAMES = 120 # modify this to affect calibration period and amount of "lookback"
@@ -66,104 +70,6 @@ ax = None
 line = None
 peakpts = None
 
-def lie_detect(input_params, landmarks=False, bpm_chart=False, flip=False, ttl=30, record=False, second=None):
-    global TELL_MAX_TTL
-    global recording
-
-    if len(input_params) == 1:
-        INPUT = input_params[0]
-    elif len(input_params) != 4:
-        return print("Wrong number of values for 'input' argument; should be 0, 1, or 4.")
-
-    DRAW_LANDMARKS = landmarks
-    BPM_CHART = bpm_chart
-    FLIP = flip
-    if ttl:
-        TELL_MAX_TTL = int(ttl)
-    RECORD = record
-
-    SECOND = int(second) if (second or "").isdigit() else second
-
-    if BPM_CHART:
-        chart_setup()
-
-    if SECOND:
-        cap2 = cv2.VideoCapture(SECOND)
-
-    calibrated = False
-    calibration_frames = 0
-    with mp.solutions.face_mesh.FaceMesh(
-        max_num_faces=1,
-        refine_landmarks=True,
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5) as face_mesh:
-        with mp.solutions.hands.Hands(
-            max_num_hands=2,
-            min_detection_confidence=0.7) as hands:
-            if len(input_params) == 4:
-                screen = {
-                    "top": int(input_params[0]),
-                    "left": int(input_params[1]),
-                    "width": int(input_params[2]),
-                    "height": int(input_params[3])
-                }
-                with mss.mss() as sct:  # screenshot
-                    while True:
-                        image = np.array(sct.grab(screen))[:, :, :3]  # remove alpha channel
-                        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                        calibration_frames += process(image, face_mesh, hands, calibrated, DRAW_LANDMARKS, BPM_CHART,
-                                                      FLIP)
-                        calibrated = (calibration_frames >= MAX_FRAMES)
-                        if SECOND:
-                            process_second(cap2, image, face_mesh, hands)
-                        cv2.imshow('face', image)
-                        if RECORD:
-                            recording.write(image)
-                        if cv2.waitKey(1) & 0xFF == ord('q'):
-                            break
-            else:
-                cap = cv2.VideoCapture(INPUT)
-                fps = None
-                if isinstance(INPUT, str) and INPUT.find('.') > -1:  # from file
-                    fps = cap.get(cv2.CAP_PROP_FPS)
-                    print("FPS:", fps)
-                    # cap.set(cv2.CAP_PROP_BUFFERSIZE, 10)
-                else:  # from device
-                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-                    cap.set(cv2.CAP_PROP_FPS, 30)
-
-                if RECORD:
-                    RECORDING_FILENAME = str(datetime.now()).replace('.', '').replace(':', '') + '.avi'
-                    FPS_OUT = 10
-                    FRAME_SIZE = (int(cap.get(3)), int(cap.get(4)))
-                    recording = cv2.VideoWriter(
-                        RECORDING_FILENAME, cv2.VideoWriter_fourcc(*'MJPG'), FPS_OUT, FRAME_SIZE)
-
-                while cap.isOpened():
-                    success, image = cap.read()
-                    if not success: break
-                    calibration_frames += process(image, face_mesh, hands, calibrated, DRAW_LANDMARKS, BPM_CHART, FLIP,
-                                                  fps)
-                    calibrated = (calibration_frames >= MAX_FRAMES)
-                    if SECOND:
-                        process_second(cap2, image, face_mesh, hands)
-                    cv2.imshow('face', image)
-                    if RECORD:
-                        recording.write(image)
-                    if cv2.waitKey(1) & 0xFF == ord('q'):
-                        break
-
-                cap.release()
-                if SECOND:
-                    cap2.release()
-                if RECORD:
-                    recording.release()
-    cv2.destroyAllWindows()
-
-
-
-
 def chart_setup():
   global fig, ax, line, peakpts
 
@@ -183,6 +89,134 @@ def decrement_tells(tells):
         del tells[key]
   return tells
 
+
+def main(INPUT, DRAW_LANDMARKS=False, BPM_CHART=False, FLIP=False, TELL_MAX_TTL=30, RECORD=False, SECOND=None):
+    global recording
+
+    if len(INPUT) == 1:
+        INPUT = int(INPUT[0]) if INPUT[0].isdigit() else INPUT[0]
+    elif len(INPUT) != 4:
+        return print("Wrong number of values for 'input' argument; should be 0, 1, or 4.")
+
+    if TELL_MAX_TTL :
+        TELL_MAX_TTL = int(TELL_MAX_TTL)
+
+    if BPM_CHART:
+        chart_setup()
+
+    if SECOND:
+        cap2 = cv2.VideoCapture(SECOND)
+
+    calibrated = False
+    calibration_frames = 0
+    with mp.solutions.face_mesh.FaceMesh(
+        max_num_faces=1,
+        refine_landmarks=True,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5) as face_mesh:
+        with mp.solutions.hands.Hands(
+            max_num_hands=2,
+            min_detection_confidence=0.7) as hands:
+            if len(INPUT) == 4:
+                screen = {
+                    "top": int(INPUT[0]),
+                    "left": int(INPUT[1]),
+                    "width": int(INPUT[2]),
+                    "height": int(INPUT[3])
+                }
+                with mss.mss() as sct:  # screenshot
+                    while True:
+                        image = np.array(sct.grab(screen))[:, :, :3]  # remove alpha channel
+                        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                        calibration_frames += process(image, face_mesh, hands, calibrated, DRAW_LANDMARKS, BPM_CHART,
+                                                      FLIP)
+                        
+                        calibrated = (calibration_frames >= MAX_FRAMES)
+                        if SECOND:
+                            process_second(cap2, image, face_mesh, hands)
+                        cv2.imshow('face', image)
+                        if RECORD:
+                            recording.write(image)
+                        if cv2.waitKey(1) & 0xFF == ord('q'):
+                            break
+            else:
+                cap = cv2.VideoCapture(INPUT)
+                if isinstance(INPUT, str) and INPUT.find('.') > -1:
+                        analysis_report = open("analysis_report.txt", 'w')
+                        analysis_report.write('Video Path: ' + INPUT + '\n')
+                        duration = cap.get(cv2.CAP_PROP_FRAME_COUNT) / cap.get(cv2.CAP_PROP_FPS)
+                        analysis_report.write('Duration: ' + str(duration) + 's\n')
+                        analysis_report.close()
+                fps = None
+                if isinstance(INPUT, str) and INPUT.find('.') > -1:  # from file
+                    fps = cap.get(cv2.CAP_PROP_FPS)
+                    print("FPS:", fps)
+                    # cap.set(cv2.CAP_PROP_BUFFERSIZE, 10)
+                else:  # from device
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+                    cap.set(cv2.CAP_PROP_FPS, 30)
+
+                if RECORD:
+                    RECORDING_FILENAME = str(datetime.now()).replace('.', '').replace(':', '') + '.mp4'
+                    FPS_OUT = 10
+                    FRAME_SIZE = (int(cap.get(3)), int(cap.get(4)))
+                    recording = cv2.VideoWriter(
+                        RECORDING_FILENAME, cv2.VideoWriter_fourcc(*'MJPG'), FPS_OUT, FRAME_SIZE)
+
+                while cap.isOpened():
+                    
+                    success, image = cap.read()
+                    if not success: break
+                    # write frame number on analysis_report.txt
+                    if isinstance(INPUT, str) and INPUT.find('.') > -1:
+                        analysis_report = open("analysis_report.txt", 'a')
+                        analysis_report.write('\n')
+                        analysis_report.write('Frame: ' + str(cap.get(cv2.CAP_PROP_POS_FRAMES)) + '\n')
+                        analysis_report.close()
+                    calibration_frames += process(image, face_mesh, hands, calibrated, DRAW_LANDMARKS, BPM_CHART, FLIP,
+                                                  fps)
+                    
+                    calibrated = (calibration_frames >= MAX_FRAMES)
+                    if SECOND:
+                        process_second(cap2, image, face_mesh, hands)
+                    cv2.imshow('face', image)
+                    if RECORD:
+                        recording.write(image)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        break
+
+                cap.release()
+                if SECOND:
+                    cap2.release()
+                if RECORD:
+                    recording.release()
+    # write analysis report
+    if isinstance(INPUT, str) and INPUT.find('.') > -1:
+        analysis_report = open("analysis_report.txt", 'a')
+        # summary of analysis report
+        analysis_report.write('\nSummary\n')
+        analysis_report.write('Total time: ' + str(duration) + 's\n')
+        analysis_report.write('Total frames: ' + str(duration * fps) + '\n')
+        analysis_report.close()
+    pdf = FPDF()
+    pdf.add_page()
+    # make bold font for title
+    pdf.set_font("Arial", size=16)
+    pdf.cell(200, 10, txt="Analysis Report", ln=1, align="C")
+    f = open("analysis_report.txt", 'r')
+    pdf.set_font("Arial", size=12)
+    for x in f:
+        pdf.cell(200, 5, txt=x, ln=1, align="L")
+    f.close()
+    pdf.output(INPUT+"_analysis_report.pdf")
+
+    # locate the pdf
+    os.system(INPUT+"_analysis_report.pdf")
+    # remove the txt file
+    os.remove("analysis_report.txt")
+
+    cv2.destroyAllWindows()
 
 def new_tell(result):
   global TELL_MAX_TTL
@@ -410,20 +444,16 @@ def get_mood(image):
 
 
 def add_truth_meter(image, tell_count):
-    width = image.shape[1]
-    sm = int(width / 64)
-    bg = int(width / 3.2)
+  width = image.shape[1]
+  sm = int(width / 64)
+  bg = int(width / 3.2)
 
-    # Check if the image is not empty before resizing
-    if image.size != 0:
-        resized_meter = cv2.resize(meter, (bg, sm), interpolation=cv2.INTER_AREA)
-        image[sm:(sm + sm), bg:(bg + bg), 0:3] = resized_meter[:, :, 0:3]
+  resized_meter = cv2.resize(meter, (bg,sm), interpolation=cv2.INTER_AREA)
+  image[sm:(sm+sm), bg:(bg+bg), 0:3] = resized_meter[:, :, 0:3]
 
-        if tell_count:
-            tellX = bg + int(bg / 4) * (tell_count - 1)  # adjust for always-on BPM
-            cv2.rectangle(image, (tellX, int(.9 * sm)), (tellX + int(sm / 2), int(2.1 * sm)), (0, 0, 0), 2)
-    else:
-        print("Error: Empty image provided to add_truth_meter")
+  if tell_count:
+    tellX = bg + int(bg/4) * (tell_count - 1) # adjust for always-on BPM
+    cv2.rectangle(image, (tellX, int(.9*sm)), (tellX+int(sm/2), int(2.1*sm)), (0,0,0), 2)
 
 
 def get_face_relative_area(face):
@@ -452,7 +482,18 @@ def process(image, face_mesh, hands, calibrated=False, draw=False, bpm_chart=Fal
   global blinks, hand_on_face, face_area_size
 
   tells = decrement_tells(tells)
-
+  # check if tells is not exist in analysis_report yet
+  for key, tell in tells.copy().items():
+    # make if tell['text'] not equal to last line in analysis_report.txt
+    if tell['text'] not in open('analysis_report.txt').read().splitlines()[-1]:
+      analysis_report = open("analysis_report.txt", 'a')
+      analysis_report.write(tell['text'] + ' ' )
+      analysis_report.close()
+    else:
+       break
+  
+     
+  
   face_landmarks, hands_landmarks = find_face_and_hands(image, face_mesh, hands)
   if face_landmarks:
     face = face_landmarks.landmark
@@ -553,5 +594,18 @@ def process_second(cap, image, face_mesh, hands):
         if comparison:
           write(comparison, image, int(.75 * image.shape[1]), text_y)
           text_y += TEXT_HEIGHT
+  
 
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Face Truth')
+    parser.add_argument('input', nargs='+', help='input video or device camera')
+    parser.add_argument('-l', '--draw', action='store_true', help='draw landmarks')
+    parser.add_argument('-b', '--chart', action='store_true', help='show BPM chart')
+    parser.add_argument('-f', '--flip', action='store_true', help='flip video horizontally')
+    parser.add_argument('-r', '--record', action='store_true', help='record video')
+    parser.add_argument('-s', '--second', type=int, help='second input')
+    parser.add_argument('-t', '--ttl', type=int, help='max time to display a finding')
+    args = parser.parse_args()
 
+    main(args.input, args.draw, args.chart, args.flip, args.ttl, args.record, args.second)
+    
